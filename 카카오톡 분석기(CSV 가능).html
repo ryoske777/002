@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>MBTI N유형 힐링방 대화 빈도 분석 🌱💬</title>
+  <style>
+    body { font-family: 'Noto Sans KR', Arial, sans-serif; margin: 30px; }
+    #dashboard {margin:15px 0 16px 0;}
+    #dashSummary { font-size: 1.1em; color:#1b2933; margin-bottom:4px; display:flex; align-items:center; gap:18px;}
+    .dash-sep {color:#bbb; font-weight:normal;}
+    .dash-hr {border:0; border-top:1.3px solid #ccc; margin:8px 0 8px 0;}
+    .highlight {color:#2063b0; font-weight:bold;}
+    .label-light {color:#666;}
+    .rankingline {font-size:1.04em; margin-bottom:2px;}
+    #topArea { display:flex; align-items: center; gap:14px; margin-bottom: 2px;}
+    #dateControls { margin-top: 20px; }
+    #filterBox { margin: 24px 0 8px 0; }
+    #optionsBox { margin: 14px 0 0 0; }
+    #nickFilter { width: 50%; min-width: 240px; min-height: 80px; max-width:400px; }
+    .desc { color: #888; font-size: 13px; }
+    .row-in { background: #e7f1ff !important; color: #1858c9 !important; font-weight:bold; }
+    .row-zero { background: #f2f2f2 !important; color: #aaa !important; }
+    .legendbox {margin: 15px 0 7px 0; display:none; align-items: center;}
+    .legendchip {display:inline-block;width:16px;height:16px;margin-right:6px;vertical-align:middle;border-radius:4px;}
+    .inchip {background:#e7f1ff;border:1px solid #1858c9;}
+    .zerochip {background:#f2f2f2;border:1px solid #aaa;}
+    .legendtext {font-size: 14px; color:#444;}
+    h2 { font-size: 1.8em; }
+    th, td { text-align:center; }
+    input[type="checkbox"] { transform:scale(1.2); margin-right: 6px;}
+    label { margin-right:18px;}
+    #captureBtn { 
+      background: #607D8B; color: #fff; border:none; border-radius:7px;
+      padding: 6px 15px; font-size: 15px; cursor:pointer; font-weight:500;
+      transition: background 0.2s;
+      vertical-align:middle;
+      letter-spacing:0.5px;
+      margin-bottom:1px;
+    }
+    #captureBtn:hover { background:#455A64; }
+    #trendSummary, #summaryTop, #divider, #resultCount {display:none;}
+    #checkboxBar { margin-bottom: 8px;}
+    .lightgray { color:#666; }
+  </style>
+</head>
+<body>
+  <div id="captureArea">
+    <h2>🌱💬 MBTI N유형 힐링방 대화 빈도 분석 💚🧠</h2>
+    <div id="topArea">
+      <!-- ✅ CSV 지원: accept에 .csv 추가 (레이아웃 영향 없음) -->
+      <input type="file" id="fileInput" accept=".txt,.csv">
+      <button id="captureBtn" onclick="capturePage()">페이지 이미지로 저장 (PNG)</button>
+    </div>
+    <div id="dateControls" style="display:none;">
+      <label for="startDate">시작 날짜:</label>
+      <input type="date" id="startDate">
+      <label for="endDate">종료 날짜:</label>
+      <input type="date" id="endDate">
+      <button onclick="updateChart()">기간 분석</button>
+    </div>
+    <div id="filterBox" style="display:none;">
+      <b>닉네임 필터 <span style="font-weight:normal;color:#888;">(최대 검색 인원 100명)</span>:</b>
+      <button style="margin-left:7px; font-size:13px; padding:4px 9px;" onclick="updateChart()">필터 적용</button>
+      <div style="height:5px"></div>
+      <textarea id="nickFilter" placeholder="여기에 닉네임을 줄바꿈으로 입력하세요"></textarea>
+      <div class="desc">필터 닉네임이 <b>파란색</b>이면 해당 기간에 대화 참여, <b>회색</b>이면 미참여입니다.<br>
+      아무것도 입력하지 않으면 전체 닉네임이 표시됩니다.<br>
+      ※ 스페이스(공백)도 닉네임 일부로 처리합니다.</div>
+    </div>
+    <!-- ✅ 대시보드 요약 추가 -->
+    <div id="dashboard" style="margin-bottom:10px; display:none;">
+      <div id="dashSummary"></div>
+      <div class="dash-hr"></div>
+      <div class="rankingline" id="monthlyTop"></div>
+      <div class="rankingline" id="hot7days"></div>
+      <div class="dash-hr"></div>
+    </div>
+    <div id="optionsBox" style="display:none;">
+      <div id="checkboxBar">
+        <label><input type="checkbox" id="showFirst" checked onchange="updateChart()">첫 대화 포함</label>
+        <label><input type="checkbox" id="showLast" checked onchange="updateChart()">마지막 대화 포함</label>
+        <label><input type="checkbox" id="showDay" checked onchange="updateChart()">출몰 요일</label>
+        <label><input type="checkbox" id="showHour" checked onchange="updateChart()">출몰 시간</label>
+        <!-- 주요키워드 체크박스 삭제 -->
+      </div>
+      <label><input type="checkbox" id="showIn" checked onchange="updateChart()">참여</label>
+      <label><input type="checkbox" id="showOut" checked onchange="updateChart()">미참여</label>
+    </div>
+    <div class="legendbox" id="legendBox">
+      <span class="legendchip inchip"></span><span class="legendtext">참여</span> &nbsp; 
+      <span class="legendchip zerochip"></span><span class="legendtext">미참여</span>
+    </div>
+    <div id="result"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script>
+    let messages = [];
+    let uniqueDates = [];
+
+    // (불용어 리스트/함수 등 기존 동일하게 유지)
+    // ...banWords, isBanWord 함수 등 여기에 붙여넣으세요...
+
+    function pad(n) { return n<10 ? '0'+n : n; }
+    function isDateLike(text) { return /^\d{4}년\s*\d{1,2}월\s*\d{1,2}일/.test(String(text||"").trim()); }
+    function isTimeLike(text) { return /^(오전|오후)\s*\d{1,2}:\d{2}$/.test(String(text||"").trim()); }
+
+    /* =========================
+       ✅ 기존 TXT 파서 (변경 없음)
+       ========================= */
+    function parseKakaoTxt(text) {
+      messages = [];
+      let lines = text.split('\n');
+      let currentDateStr = null;
+      let datePattern = /^-+\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/;
+      let msgPattern = /^\[([^\[\]]+)\]\s+\[(오전|오후)\s*\d{1,2}:\d{2}\]\s*(.+)$/;
+      let nicknamePattern = /^\[([^\[\]]+)\]\s+\[(오전|오후)\s*\d{1,2}:\d{2}\]/;
+      for(let line of lines) {
+        let dateMatch = line.match(datePattern);
+        if(dateMatch) {
+          currentDateStr = dateMatch[1] + '-' + pad(parseInt(dateMatch[2])) + '-' + pad(parseInt(dateMatch[3]));
+          continue;
+        }
+        if(currentDateStr) {
+          let msgMatch = line.match(msgPattern);
+          if(msgMatch) {
+            let user = msgMatch[1].trim();
+            let time = msgMatch[2] + " " + line.match(/\[(오전|오후)\s*\d{1,2}:\d{2}\]/)[0].replace(/[\[\]]/g, "");
+            let msg = msgMatch[3].trim();
+            if (
+              user.length > 0 &&
+              !isDateLike(user) &&
+              !isTimeLike(user)
+            ) {
+              messages.push({
+                user: user,
+                date: currentDateStr,
+                time: time,
+                msg: msg
+              });
+            }
+          } else {
+            let match = line.match(nicknamePattern);
+            if(match) {
+              let user = match[1].trim();
+              let time = match[2] + " " + line.match(/\[(오전|오후)\s*\d{1,2}:\d{2}\]/)[0].replace(/[\[\]]/g, "");
+              messages.push({
+                user: user,
+                date: currentDateStr,
+                time: time,
+                msg: ""
+              });
+            }
+          }
+        }
+      }
+      uniqueDates = Array.from(new Set(messages.map(x=>x.date))).sort();
+    }
+
+    /* =========================
+       ✅ CSV 지원 추가 (신규)
+       - 기존 기능/레이아웃 영향 없음
+       ========================= */
+
+    function stripBom(s){
+      if(!s) return s;
+      return s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
+    }
+
+    function detectDelimiterOutOfQuotes(text){
+      // 첫 10줄 정도를 대상으로, 따옴표 밖에서 구분자 빈도 측정
+      let sample = stripBom(text||"");
+      let maxLines = 10;
+      let lineCount = 0;
+      let inQuotes = false;
+      let counts = {",":0, "\t":0, ";":0, "|":0};
+      for(let i=0;i<sample.length;i++){
+        let ch = sample[i];
+        if(ch === '"'){
+          // "" 이스케이프
+          if(inQuotes && sample[i+1] === '"'){ i++; continue; }
+          inQuotes = !inQuotes;
+          continue;
+        }
+        if(!inQuotes){
+          if(ch in counts) counts[ch]++;
+          if(ch === '\n'){
+            lineCount++;
+            if(lineCount >= maxLines) break;
+          }
+        }
+      }
+      let best = ",";
+      let bestVal = -1;
+      Object.keys(counts).forEach(k=>{
+        if(counts[k] > bestVal){ bestVal = counts[k]; best = k; }
+      });
+      return best;
+    }
+
+    function parseCSVToRows(text, delimiter){
+      // 상태머신 CSV 파서: 따옴표/콤마/개행/멀티라인 필드 지원
+      let s = stripBom(text||"");
+      let rows = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
+
+      for(let i=0;i<s.length;i++){
+        let ch = s[i];
+
+        if(ch === '"'){
+          if(inQuotes && s[i+1] === '"'){
+            cell += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+
+        if(!inQuotes && ch === delimiter){
+          row.push(cell);
+          cell = "";
+          continue;
+        }
+
+        if(!inQuotes && (ch === '\n' || ch === '\r')){
+          // CRLF 처리
+          if(ch === '\r' && s[i+1] === '\n') i++;
+          row.push(cell);
+          cell = "";
+          // 빈 줄은 스킵하되, 완전 빈 row만 제외
+          if(row.some(v => String(v).trim() !== "")){
+            rows.push(row);
+          }
+          row = [];
+          continue;
+        }
+
+        cell += ch;
+      }
+
+      // 마지막 셀/행 처리
+      row.push(cell);
+      if(row.some(v => String(v).trim() !== "")){
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function normalizeHeaderKey(x){
+      return String(x||"")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g,"")
+        .replace(/[\u200b-\u200f]/g,""); // 제로폭 문자 제거
+    }
+
+    function looksLikeHeader(row){
+      // 헤더로 자주 쓰이는 키가 포함되면 헤더로 판단
+      let keys = row.map(normalizeHeaderKey);
+      let joined = keys.join("|");
+      return (
+        joined.includes("날짜") || joined.includes("일자") || joined.includes("date") ||
+        joined.includes("시간") || joined.includes("time") || joined.includes("시각") ||
+        joined.includes("대화명") || joined.includes("닉네임") || joined.includes("보낸이") || joined.includes("user") || joined.includes("name") ||
+        joined.includes("내용") || joined.includes("message") || joined.includes("msg") || joined.includes("text") ||
+        joined.includes("일시") || joined.includes("datetime") || joined.includes("timestamp")
+      );
+    }
+
+    function parseDateAny(raw){
+      let t = String(raw||"").trim();
+      if(!t) return null;
+
+      // 1) 2026년 1월 4일
+      let m1 = t.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+      if(m1) return `${m1[1]}-${pad(parseInt(m1[2]))}-${pad(parseInt(m1[3]))}`;
+
+      // 2) 2026-01-04 / 2026.01.04 / 2026/01/04
+      let m2 = t.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+      if(m2) return `${m2[1]}-${pad(parseInt(m2[2]))}-${pad(parseInt(m2[3]))}`;
+
+      // 3) 01/04/2026 또는 1-4-2026 (월/일/년 가능성)
+      let m3 = t.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+      if(m3){
+        // 한국 데이터는 보통 yyyy-mm-dd가 많지만, 예외로 mm-dd-yyyy도 지원
+        // 기본은 마지막이 4자리면 연도로 보고 mm/dd/yyyy로 처리
+        let mm = parseInt(m3[1]), dd = parseInt(m3[2]), yy = m3[3];
+        if(mm>=1 && mm<=12 && dd>=1 && dd<=31) return `${yy}-${pad(mm)}-${pad(dd)}`;
+      }
+
+      return null;
+    }
+
+    function formatKoreanAmPmFrom24h(hh, mm){
+      let h = parseInt(hh,10);
+      let m = parseInt(mm,10);
+      if(Number.isNaN(h) || Number.isNaN(m)) return null;
+      let ampm = (h >= 12) ? "오후" : "오전";
+      let h12 = h % 12;
+      if(h12 === 0) h12 = 12;
+      return `${ampm} ${h12}:${pad(m)}`;
+    }
+
+    function parseTimeAny(raw){
+      let t = String(raw||"").trim();
+      if(!t) return null;
+
+      // 1) 오전 1:23 / 오후 12:05
+      let m1 = t.match(/(오전|오후)\s*(\d{1,2}):(\d{2})/);
+      if(m1){
+        return `${m1[1]} ${parseInt(m1[2],10)}:${m1[3]}`;
+      }
+
+      // 2) 24시간 13:05 or 13:05:22
+      let m2 = t.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+      if(m2){
+        let hh = parseInt(m2[1],10);
+        let mm = parseInt(m2[2],10);
+        if(hh>=0 && hh<=23 && mm>=0 && mm<=59){
+          return formatKoreanAmPmFrom24h(hh, mm);
+        }
+      }
+
+      return null;
+    }
+
+    function parseDateTimeAny(raw){
+      let t = String(raw||"").trim();
+      if(!t) return {date:null, time:null};
+
+      // "2026-01-04 13:05" / "2026.01.04 13:05:22"
+      let m = t.match(/(\d{4}[.\-\/]\d{1,2}[.\-\/]\d{1,2})\s+(.+)/);
+      if(m){
+        let d = parseDateAny(m[1]);
+        let ti = parseTimeAny(m[2]);
+        return {date:d, time:ti};
+      }
+
+      // "2026년 1월 4일 오후 1:05"
+      let d2 = parseDateAny(t);
+      let ti2 = parseTimeAny(t);
+      return {date:d2, time:ti2};
+    }
+
+    function parseKakaoCsv(text){
+      messages = [];
+
+      let delimiter = detectDelimiterOutOfQuotes(text);
+      let rows = parseCSVToRows(text, delimiter);
+      if(!rows || rows.length === 0){
+        uniqueDates = [];
+        return;
+      }
+
+      let startRow = 0;
+      let header = null;
+      if(looksLikeHeader(rows[0])){
+        header = rows[0].map(h => String(h||"").trim());
+        startRow = 1;
+      }
+
+      let idx = {date:-1, time:-1, user:-1, msg:-1, datetime:-1};
+
+      if(header){
+        let keys = header.map(normalizeHeaderKey);
+
+        function findIndex(candidates){
+          for(let i=0;i<keys.length;i++){
+            for(let c of candidates){
+              if(keys[i] === c) return i;
+            }
+          }
+          // 부분 포함도 허용
+          for(let i=0;i<keys.length;i++){
+            for(let c of candidates){
+              if(keys[i].includes(c)) return i;
+            }
+          }
+          return -1;
+        }
+
+        idx.date = findIndex(["date","날짜","일자","day"]);
+        idx.time = findIndex(["time","시간","시각"]);
+        idx.user = findIndex(["user","name","nickname","대화명","닉네임","작성자","보낸사람","보낸이","사용자"]);
+        idx.msg  = findIndex(["msg","message","내용","텍스트","text","body","대화"]);
+
+        idx.datetime = findIndex(["datetime","일시","날짜시간","timestamp","date_time","dateandtime"]);
+      }
+
+      function guessIndexes(row){
+        // 헤더가 없거나, 일부 칼럼이 비어있는 경우를 위한 추정
+        // 가장 흔한: date, time, user, msg
+        let n = row.length;
+
+        // 1) date/time 분리형
+        if(n >= 3){
+          let d0 = parseDateAny(row[0]);
+          let t1 = parseTimeAny(row[1]);
+          if(d0 && t1){
+            return {date:0, time:1, user:2, msg:(n>=4?3:-1), datetime:-1};
+          }
+        }
+
+        // 2) datetime 단일형 (첫 컬럼)
+        let dt0 = parseDateTimeAny(row[0]);
+        if(dt0.date && dt0.time && n >= 2){
+          return {date:-1, time:-1, user:1, msg:(n>=3?2:-1), datetime:0};
+        }
+
+        // 3) 마지막이 메시지일 확률이 높다고 보고 user는 그 직전
+        if(n >= 3){
+          return {date:0, time:1, user:n-2, msg:n-1, datetime:-1};
+        }
+
+        // 4) 최소: user만 있는 경우(카운트만이라도)
+        if(n >= 1){
+          return {date:-1, time:-1, user:0, msg:-1, datetime:-1};
+        }
+
+        return {date:-1, time:-1, user:-1, msg:-1, datetime:-1};
+      }
+
+      for(let r = startRow; r < rows.length; r++){
+        let row = rows[r];
+
+        // 인덱스가 부족하거나 헤더가 없으면 추정
+        let useIdx = idx;
+        if(!header || (idx.user === -1 && idx.datetime === -1)){
+          useIdx = guessIndexes(row);
+        }
+
+        let userRaw = (useIdx.user >= 0 && row[useIdx.user] != null) ? String(row[useIdx.user]) : "";
+        let msgRaw  = (useIdx.msg  >= 0 && row[useIdx.msg]  != null) ? String(row[useIdx.msg])  : "";
+
+        // date/time 확보
+        let dateStr = null;
+        let timeStr = null;
+
+        if(useIdx.datetime >= 0 && row[useIdx.datetime] != null){
+          let dt = parseDateTimeAny(row[useIdx.datetime]);
+          dateStr = dt.date;
+          timeStr = dt.time;
+        }
+
+        if(!dateStr && useIdx.date >= 0 && row[useIdx.date] != null){
+          dateStr = parseDateAny(row[useIdx.date]);
+        }
+        if(!timeStr && useIdx.time >= 0 && row[useIdx.time] != null){
+          timeStr = parseTimeAny(row[useIdx.time]);
+        }
+
+        // 다른 칼럼에서라도 datetime 추정
+        if(!dateStr || !timeStr){
+          // date/time이 한 칼럼에 붙어있는 경우가 있어, 전 칼럼을 훑어서 보완
+          for(let c=0;c<row.length;c++){
+            let dt = parseDateTimeAny(row[c]);
+            if(!dateStr && dt.date) dateStr = dt.date;
+            if(!timeStr && dt.time) timeStr = dt.time;
+            if(dateStr && timeStr) break;
+          }
+        }
+
+        // date는 필수 (기간 분석/달력 입력을 위해)
+        if(!dateStr) continue;
+
+        let user = String(userRaw||"").trim();
+        if(
+          user.length === 0 ||
+          isDateLike(user) ||
+          isTimeLike(user)
+        ) continue;
+
+        // time은 없어도 카운트는 가능하게(기존 TXT도 msg "" 라인 허용하듯)
+        if(!timeStr) timeStr = ""; // getHour는 매칭 실패 시 -1 처리
+
+        messages.push({
+          user: user,
+          date: dateStr,
+          time: timeStr,
+          msg: String(msgRaw||"").trim()
+        });
+      }
+
+      uniqueDates = Array.from(new Set(messages.map(x=>x.date))).sort();
+    }
+
+    function parseByFile(text, filename){
+      // 확장자 우선 판단 + 실패 시 자동 대체 파싱(기존 TXT 보호)
+      let name = String(filename||"").toLowerCase();
+
+      if(name.endsWith(".csv")){
+        parseKakaoCsv(text);
+        if(messages.length === 0){
+          // 혹시 csv로 잘못 저장된 txt인 경우 대비
+          parseKakaoTxt(text);
+        }
+      } else {
+        parseKakaoTxt(text);
+        if(messages.length === 0){
+          // 혹시 txt로 저장된 csv인 경우 대비
+          parseKakaoCsv(text);
+        }
+      }
+    }
+
+    function getNickFilterList() {
+      let val = document.getElementById('nickFilter').value.trim();
+      if(!val) return null;
+      let arr = val.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+      return arr.slice(0,100); // 최대 100명
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      let file = e.target.files[0];
+      if (!file) return;
+      let reader = new FileReader();
+      reader.onload = function(evt) {
+        // ✅ TXT/CSV 자동 분기 파싱
+        parseByFile(evt.target.result, file.name);
+
+        if(messages.length===0) {
+          document.getElementById('result').innerHTML = "<b style='color:red'>대화 데이터를 감지할 수 없습니다. 올바른 카카오톡 txt 파일인지 확인하세요.</b>";
+          document.getElementById('dateControls').style.display = "none";
+          document.getElementById('filterBox').style.display = "none";
+          document.getElementById('optionsBox').style.display = "none";
+          document.getElementById('legendBox').style.display = "none";
+          document.getElementById('dashboard').style.display = "none";
+          return;
+        }
+        let minDate = uniqueDates[0];
+        let maxDate = uniqueDates[uniqueDates.length-1];
+        document.getElementById('startDate').value = minDate;
+        document.getElementById('endDate').value = maxDate;
+        document.getElementById('startDate').min = minDate;
+        document.getElementById('startDate').max = maxDate;
+        document.getElementById('endDate').min = minDate;
+        document.getElementById('endDate').max = maxDate;
+        document.getElementById('dateControls').style.display = "";
+        document.getElementById('filterBox').style.display = "";
+        document.getElementById('optionsBox').style.display = "";
+        document.getElementById('legendBox').style.display = "flex";
+        document.getElementById('dashboard').style.display = "";
+        updateChart();
+      };
+      reader.readAsText(file, "UTF-8");
+    });
+
+    function updateChart() {
+      let start = document.getElementById('startDate').value;
+      let end = document.getElementById('endDate').value;
+      if (!start || !end) return;
+      let st = new Date(start);
+      let et = new Date(end);
+
+      let showFirst = document.getElementById('showFirst').checked;
+      let showLast = document.getElementById('showLast').checked;
+      let showDay = document.getElementById('showDay').checked;
+      let showHour = document.getElementById('showHour').checked;
+      let showIn = document.getElementById('showIn') ? document.getElementById('showIn').checked : true;
+      let showOut = document.getElementById('showOut') ? document.getElementById('showOut').checked : true;
+
+      // 기간별로 메시지 카운트
+      let filtered = messages.filter(x => {
+        let d = new Date(x.date);
+        return d >= st && d <= et;
+      });
+
+      // 각 user별 대화 시각 수집 + 메시지 모음
+      let userMap = {}, firstMap = {}, lastMap = {},
+          dayMap = {}, hourMap = {};
+      for (let i = 0; i < filtered.length; ++i) {
+        let m = filtered[i];
+        if (!userMap[m.user]) {
+          userMap[m.user] = 1;
+          firstMap[m.user] = `${m.date} ${m.time}`;
+          lastMap[m.user] = `${m.date} ${m.time}`;
+        } else {
+          userMap[m.user]++;
+          lastMap[m.user] = `${m.date} ${m.time}`;
+        }
+        if (showDay) {
+          let dt = new Date(m.date);
+          let w = dt.getDay();
+          if (!dayMap[m.user]) dayMap[m.user] = Array(7).fill(0);
+          dayMap[m.user][w]++;
+        }
+        if (showHour) {
+          let hour = getHour(m.time);
+          if (!hourMap[m.user]) hourMap[m.user] = Array(24).fill(0);
+          if (hour >= 0 && hour <= 23) hourMap[m.user][hour]++;
+        }
+      }
+      // 출몰 요일 이름
+      const weekNames = ['일','월','화','수','목','금','토'];
+
+      let filterList = getNickFilterList();
+      let userArr = [];
+      if(filterList) {
+        let tmpArr = filterList.map(u => [
+          u,
+          userMap[u] || 0,
+          firstMap[u] || "-",
+          lastMap[u] || "-",
+          getMaxDay(dayMap[u], weekNames, showDay),
+          getMaxHour(hourMap[u], showHour)
+        ]);
+        let arr_participated = tmpArr.filter(([u, c]) => c > 0).sort((a, b) => b[1] - a[1]);
+        let arr_not = tmpArr.filter(([u, c]) => c === 0);
+        userArr = arr_participated.concat(arr_not);
+      } else {
+        userArr = Object.keys(userMap).map(u => [
+          u, userMap[u], firstMap[u], lastMap[u],
+          getMaxDay(dayMap[u], weekNames, showDay),
+          getMaxHour(hourMap[u], showHour)
+        ]);
+        userArr.sort((a, b) => b[1] - a[1]);
+      }
+
+      // 트렌드 요약 계산
+      let dailyCountMap = {};
+      for (let m of filtered) {
+        if (!dailyCountMap[m.date]) dailyCountMap[m.date] = 0;
+        dailyCountMap[m.date]++;
+      }
+      let dayList = Object.keys(dailyCountMap).sort();
+      let counts = dayList.map(d=>dailyCountMap[d]);
+      let max = Math.max(...counts);
+      let min = Math.min(...counts);
+      let maxDay = dayList[counts.indexOf(max)];
+      let minDay = dayList[counts.indexOf(min)];
+      let avg = counts.length ? (counts.reduce((a,b)=>a+b,0)/counts.length).toFixed(1) : 0;
+
+      // 전 월 상위 활동자
+      let prevMonth = (function(){
+        let d = new Date(start);
+        d.setMonth(d.getMonth()-1);
+        return d.toISOString().slice(0,7);
+      })();
+      let prevMonthStats = {};
+      messages.forEach(m=>{
+        if(m.date && m.date.startsWith(prevMonth)) {
+          if(!prevMonthStats[m.user]) prevMonthStats[m.user]=1;
+          else prevMonthStats[m.user]++;
+        }
+      });
+      let prevTop = "-";
+      let prevMax = 0;
+      Object.entries(prevMonthStats).forEach(([u,c])=>{
+        if(c>prevMax){prevMax=c;prevTop=u;}
+      });
+
+      // 최근 7일 급상승 인물
+      let endD = new Date(end);
+      let weekStart = new Date(endD.getTime() - 6*24*60*60*1000);
+      let weekStr = weekStart.toISOString().slice(0,10);
+      let currWeekStats = {};
+      let prevWeekStats = {};
+      messages.forEach(m=>{
+        let md = m.date;
+        if(md >= weekStr && md <= end) {
+          if(!currWeekStats[m.user]) currWeekStats[m.user]=1;
+          else currWeekStats[m.user]++;
+        }
+        let d = new Date(md);
+        let wPrev = new Date(endD.getTime() - 13*24*60*60*1000);
+        let wPrevEnd = new Date(endD.getTime() - 7*24*60*60*1000);
+        if(d >= wPrev && d < wPrevEnd){
+          if(!prevWeekStats[m.user]) prevWeekStats[m.user]=1;
+          else prevWeekStats[m.user]++;
+        }
+      });
+      let riseTop = "-";
+      let riseDiff = -9999;
+      Object.keys(currWeekStats).forEach(u=>{
+        let diff = currWeekStats[u] - (prevWeekStats[u]||0);
+        if(diff>riseDiff && currWeekStats[u]>0){riseDiff=diff;riseTop=u;}
+      });
+
+      // 대시보드 출력 (userArr 길이 체크 후)
+      let inCount = userArr.filter(([_,c])=>c>0).length;
+      let totalUserCount = userArr.length;
+      document.getElementById('dashboard').style.display = "";
+      document.getElementById('dashSummary').innerHTML = 
+        `<span><b>참여자수</b> <span class="lightgray">${inCount}/${totalUserCount}</span></span>` +
+        `<span class="dash-sep">|</span><span><b>최다대화일</b> <span class="label-light">${maxDay||"-"}</span> <span class="highlight">${max||0}회</span></span>` +
+        `<span class="dash-sep">|</span><span><b>최소대화일</b> <span class="label-light">${minDay||"-"}</span> <span class="highlight">${min||0}회</span></span>` +
+        `<span class="dash-sep">|</span><span><b>평균대화량</b> <span class="highlight">${avg}회/일</span></span>`;
+      document.getElementById('monthlyTop').innerHTML =
+        `<span>전 월 가장 많이 활동한 인물: <span class="highlight">${prevTop}</span></span>`;
+      document.getElementById('hot7days').innerHTML =
+        `<span>최근 7일간 급상승 중인 인물: <span class="highlight">${riseTop}</span></span>`;
+
+      // 표 렌더링
+      let filteredUserArr = userArr.filter(([_,c])=>{
+        if(c>0 && showIn) return true;
+        if(c===0 && showOut) return true;
+        return false;
+      });
+      let ths = `<th>대화명</th><th>대화 횟수</th>`;
+      if(showFirst) ths += `<th>첫 대화</th>`;
+      if(showLast) ths += `<th>마지막 대화</th>`;
+      if(showDay) ths += `<th>출몰 요일</th>`;
+      if(showHour) ths += `<th>출몰 시간</th>`;
+
+      let resultHtml = `<table id="mainTable" border="1" cellpadding="5" style="border-collapse:collapse;margin-top:10px;">
+      <tr>${ths}</tr>`;
+      filteredUserArr.forEach(([u, cnt, f, l, day, hour]) => {
+        let rowClass = cnt > 0 ? "row-in" : "row-zero";
+        resultHtml += `<tr class="${rowClass}"><td>${u}</td><td>${cnt}</td>`;
+        if(showFirst) resultHtml += `<td>${f}</td>`;
+        if(showLast) resultHtml += `<td>${l}</td>`;
+        if(showDay) resultHtml += `<td>${day}</td>`;
+        if(showHour) resultHtml += `<td>${hour}</td>`;
+        resultHtml += `</tr>`;
+      });
+      resultHtml += `</table>`;
+      document.getElementById('result').innerHTML = resultHtml;
+    }
+
+    function getHour(timestr){
+      let m = String(timestr||"").match(/(오전|오후)\s*(\d{1,2}):\d{2}/);
+      if(!m) return -1;
+      let h = parseInt(m[2]);
+      if(m[1]==='오후' && h<12) h+=12;
+      if(m[1]==='오전' && h===12) h=0;
+      return h;
+    }
+    function getMaxDay(arr, weekNames, enabled){
+      if(!enabled||!arr) return "-";
+      let max = Math.max(...arr);
+      if(max<=0) return "-";
+      let idx = arr.indexOf(max);
+      return weekNames[idx];
+    }
+    function getMaxHour(arr, enabled){
+      if(!enabled||!arr) return "-";
+      let max = Math.max(...arr);
+      if(max<=0) return "-";
+      let idx = arr.indexOf(max);
+      return `${idx}시~${idx+1}시`;
+    }
+    function capturePage() {
+      let area = document.getElementById('captureArea');
+      html2canvas(area, {backgroundColor: '#fff', scale:2, windowWidth: document.body.scrollWidth}).then(function(canvas) {
+        let link = document.createElement('a');
+        link.download = 'mbti_대화빈도분석.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    }
+  </script>
+</body>
+</html>
