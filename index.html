@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>카카오톡 대화 분석기</title>
+<style>
+  body { font-family: 'Noto Sans KR', Arial, sans-serif; margin: 0; background:#f6f8fa; color:#1b2933; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-size: 1.6em; margin: 0 0 6px; }
+  p.sub { color:#666; margin: 0 0 28px; }
+  a.card { display:block; text-decoration:none; color:inherit; background:#fff; border:1px solid #dfe3e8;
+           border-radius:10px; padding:18px 20px; margin-bottom:14px; transition:border-color .15s, box-shadow .15s; }
+  a.card:hover { border-color:#2063b0; box-shadow:0 2px 10px rgba(32,99,176,.10); }
+  a.card .t { font-size:1.1em; font-weight:bold; color:#2063b0; }
+  a.card .d { font-size:.92em; color:#666; margin-top:4px; }
+  footer { margin-top:32px; font-size:.85em; color:#999; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>카카오톡 대화 분석기 🌱💬</h1>
+  <p class="sub">아래에서 사용할 버전을 선택하세요.</p>
+
+  <a class="card" href="analyzer.html">
+    <div class="t">분석기 (CSV 가능)</div>
+    <div class="d">CSV 내보내기를 지원하는 최신 버전</div>
+  </a>
+
+  <a class="card" href="basic.html">
+    <div class="t">대화 분석기 (기본)</div>
+    <div class="d">최종 버전 · 기본 기능</div>
+  </a>
+
+  <footer>모든 분석은 브라우저 안에서만 처리되며, 대화 파일은 서버로 전송되지 않습니다.</footer>
+</div>
+</body>
+</html>
